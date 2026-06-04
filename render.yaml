@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: panel-activacion-tv
+    env: node
+    startCommand: npm start
+    autoDeploy: true

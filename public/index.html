@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel Activacion TV</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --panel: #0d1c30;
+      --panel2: #102642;
+      --line: #244562;
+      --text: #f6fbff;
+      --muted: #a8bfd6;
+      --blue: #168bff;
+      --blue2: #41b6ff;
+      --green: #24c782;
+      --red: #ef4f6a;
+      --yellow: #f3c94e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top left, #123d66 0, #07111f 34%, #050910 100%);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    button, input, select {
+      font: inherit;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 11px 14px;
+      background: var(--blue);
+      color: white;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button:hover, button:focus { outline: 2px solid var(--blue2); outline-offset: 2px; }
+    button.secondary { background: #29435f; }
+    button.danger { background: #bc2942; }
+    button.ghost { background: transparent; border: 1px solid var(--line); }
+    input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #071827;
+      color: var(--text);
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--blue2); box-shadow: 0 0 0 3px #168bff33; }
+    label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 700; }
+    .wrap { width: min(1280px, calc(100% - 28px)); margin: 0 auto; padding: 22px 0 34px; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .mark {
+      width: 46px; height: 46px; border-radius: 10px;
+      display: grid; place-items: center;
+      background: linear-gradient(145deg, #0c74ff, #43d0ff);
+      box-shadow: 0 12px 28px #0008;
+      font-size: 25px; font-weight: 900;
+    }
+    h1 { margin: 0; font-size: clamp(23px, 3vw, 34px); letter-spacing: 0; }
+    .sub { color: var(--muted); margin-top: 3px; font-size: 14px; }
+    .layout { display: grid; grid-template-columns: 390px 1fr; gap: 16px; align-items: start; }
+    .card {
+      background: color-mix(in srgb, var(--panel) 92%, black);
+      border: 1px solid #1d3853;
+      border-radius: 8px;
+      box-shadow: 0 16px 36px #0007;
+    }
+    .card h2 { margin: 0; font-size: 18px; }
+    .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px; border-bottom: 1px solid #1d3853; }
+    .body { padding: 16px; }
+    .grid { display: grid; gap: 12px; }
+    .two { grid-template-columns: 1fr 1fr; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .login {
+      width: min(430px, calc(100% - 28px));
+      margin: 12vh auto 0;
+      padding: 20px;
+    }
+    .hidden { display: none !important; }
+    .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .seg button { background: #1b3550; border: 1px solid #2d4e70; }
+    .seg button.active { background: var(--blue); border-color: var(--blue2); }
+    .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .switch input { width: 22px; height: 22px; }
+    .status {
+      display: inline-flex; align-items: center; gap: 7px;
+      border-radius: 999px; padding: 6px 10px;
+      font-size: 12px; font-weight: 900;
+    }
+    .status.on { background: #0c3b2c; color: #8ff0c2; }
+    .status.off { background: #461621; color: #ff9aae; }
+    .status.warn { background: #443914; color: #ffe28a; }
+    .toolbar { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+    .table { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 760px; }
+    th, td { padding: 12px 10px; border-bottom: 1px solid #1d3853; text-align: left; vertical-align: top; }
+    th { color: #bdd7ee; font-size: 12px; text-transform: uppercase; }
+    tr:hover td { background: #102846; }
+    .device { color: white; font-weight: 900; word-break: break-all; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .pill { display: inline-block; padding: 5px 9px; border-radius: 999px; background: #132f4e; color: #b9dcff; font-size: 12px; font-weight: 900; }
+    .message { margin: 12px 0 0; color: var(--yellow); min-height: 20px; }
+    .empty { padding: 24px; color: var(--muted); text-align: center; }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .top { align-items: flex-start; flex-direction: column; }
+      .two { grid-template-columns: 1fr; }
+      .toolbar { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main id="loginView" class="login card">
+    <div class="brand">
+      <div class="mark">TV</div>
+      <div>
+        <h1>Panel Activacion TV</h1>
+        <div class="sub">Acceso privado</div>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:18px">
+      <label>Usuario <input id="loginUser" autocomplete="username" value="admin"></label>
+      <label>Contrasena <input id="loginPass" type="password" autocomplete="current-password"></label>
+      <button id="loginBtn">Entrar</button>
+      <div id="loginMsg" class="message"></div>
+    </div>
+  </main>
+
+  <main id="appView" class="wrap hidden">
+    <section class="top">
+      <div class="brand">
+        <div class="mark">TV</div>
+        <div>
+          <h1>Panel Activacion TV</h1>
+          <div class="sub">Activa dispositivos y carga lineas Xtream o M3U</div>
+        </div>
+      </div>
+      <button class="ghost" id="logoutBtn">Salir</button>
+    </section>
+
+    <section class="layout">
+      <div class="card">
+        <div class="head">
+          <h2 id="formTitle">Nuevo dispositivo</h2>
+          <span id="editingBadge" class="pill hidden">Editando</span>
+        </div>
+        <div class="body grid">
+          <label>ID del dispositivo <input id="deviceId" placeholder="Ejemplo: 1a2b3c4d5e"></label>
+          <label class="switch">Activado <input id="activo" type="checkbox" checked></label>
+          <label>Tipo de linea</label>
+          <div class="seg">
+            <button id="tipoXtream" type="button" class="active">Xtream</button>
+            <button id="tipoM3u" type="button">M3U</button>
+          </div>
+          <div id="xtreamFields" class="grid">
+            <label>Servidor <input id="servidor" placeholder="http://servidor.com:8080"></label>
+            <div class="grid two">
+              <label>Usuario <input id="usuario" autocomplete="off"></label>
+              <label>Contrasena <input id="password" autocomplete="off"></label>
+            </div>
+          </div>
+          <div id="m3uFields" class="grid hidden">
+            <label>URL M3U <input id="m3uUrl" placeholder="http://servidor/lista.m3u"></label>
+          </div>
+          <label>Caduca <input id="caduca" type="date"></label>
+          <div class="actions">
+            <button id="saveBtn">Guardar</button>
+            <button id="clearBtn" class="secondary" type="button">Limpiar</button>
+          </div>
+          <div id="formMsg" class="message"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="head">
+          <h2>Dispositivos</h2>
+          <span id="countBadge" class="pill">0</span>
+        </div>
+        <div class="body">
+          <div class="toolbar">
+            <input id="search" placeholder="Buscar por ID, usuario, servidor o lista">
+            <button id="reloadBtn" class="secondary">Actualizar</button>
+          </div>
+        </div>
+        <div class="table">
+          <table>
+            <thead>
+              <tr>
+                <th>Dispositivo</th>
+                <th>Estado</th>
+                <th>Tipo</th>
+                <th>Linea</th>
+                <th>Caduca</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+          <div id="empty" class="empty hidden">No hay dispositivos todavia.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let token = localStorage.getItem('panelToken') || '';
+    let devices = [];
+    let tipo = 'xtream';
+
+    async function api(url, options = {}) {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: token ? 'Bearer ' + token : '',
+          ...(options.headers || {})
+        }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) throw new Error(data.message || 'No se pudo completar.');
+      return data;
+    }
+
+    function showApp(show) {
+      $('loginView').classList.toggle('hidden', show);
+      $('appView').classList.toggle('hidden', !show);
+    }
+
+    function setTipo(next) {
+      tipo = next;
+      $('tipoXtream').classList.toggle('active', tipo === 'xtream');
+      $('tipoM3u').classList.toggle('active', tipo === 'm3u');
+      $('xtreamFields').classList.toggle('hidden', tipo !== 'xtream');
+      $('m3uFields').classList.toggle('hidden', tipo !== 'm3u');
+    }
+
+    function formData() {
+      return {
+        device_id: $('deviceId').value.trim(),
+        activo: $('activo').checked,
+        tipo,
+        servidor: $('servidor').value.trim(),
+        usuario: $('usuario').value.trim(),
+        password: $('password').value.trim(),
+        m3u_url: $('m3uUrl').value.trim(),
+        caduca: $('caduca').value
+      };
+    }
+
+    function fillForm(row) {
+      $('deviceId').value = row.device_id || '';
+      $('activo').checked = Boolean(row.activo);
+      setTipo(row.tipo === 'm3u' ? 'm3u' : 'xtream');
+      $('servidor').value = row.servidor || '';
+      $('usuario').value = row.usuario || '';
+      $('password').value = row.password || '';
+      $('m3uUrl').value = row.m3u_url || '';
+      $('caduca').value = row.caduca || '';
+      $('formTitle').textContent = 'Editar dispositivo';
+      $('editingBadge').classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function clearForm() {
+      $('deviceId').value = '';
+      $('activo').checked = true;
+      setTipo('xtream');
+      $('servidor').value = '';
+      $('usuario').value = '';
+      $('password').value = '';
+      $('m3uUrl').value = '';
+      $('caduca').value = '';
+      $('formTitle').textContent = 'Nuevo dispositivo';
+      $('editingBadge').classList.add('hidden');
+      $('formMsg').textContent = '';
+    }
+
+    function stateOf(row) {
+      if (!row.activo) return ['off', 'Apagado'];
+      if (row.caduca && new Date(row.caduca + 'T23:59:59') < new Date()) return ['warn', 'Caducado'];
+      return ['on', 'Activo'];
+    }
+
+    function render() {
+      const q = $('search').value.trim().toLowerCase();
+      const filtered = devices.filter((d) => JSON.stringify(d).toLowerCase().includes(q));
+      $('countBadge').textContent = filtered.length;
+      $('empty').classList.toggle('hidden', filtered.length !== 0);
+      $('rows').innerHTML = filtered.map((row) => {
+        const [cls, text] = stateOf(row);
+        const line = row.tipo === 'm3u'
+          ? `<div class="muted">${escapeHtml(row.m3u_url || '')}</div>`
+          : `<div><b>${escapeHtml(row.usuario || '')}</b></div><div class="muted">${escapeHtml(row.servidor || '')}</div>`;
+        return `<tr>
+          <td><div class="device">${escapeHtml(row.device_id || '')}</div></td>
+          <td><span class="status ${cls}">${text}</span></td>
+          <td><span class="pill">${escapeHtml(row.tipo || 'xtream')}</span></td>
+          <td>${line}</td>
+          <td>${escapeHtml(row.caduca || 'Sin fecha')}</td>
+          <td>
+            <div class="actions">
+              <button class="secondary" onclick='editDevice(${JSON.stringify(row.device_id)})'>Editar</button>
+              <button class="secondary" onclick='toggleDevice(${JSON.stringify(row.device_id)})'>${row.activo ? 'Apagar' : 'Activar'}</button>
+              <button class="danger" onclick='deleteDevice(${JSON.stringify(row.device_id)})'>Borrar</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    async function load() {
+      $('formMsg').textContent = 'Cargando...';
+      const data = await api('/api/devices');
+      devices = data.devices || [];
+      $('formMsg').textContent = '';
+      render();
+    }
+
+    async function login() {
+      $('loginMsg').textContent = 'Entrando...';
+      try {
+        const data = await api('/api/login', {
+          method: 'POST',
+          body: JSON.stringify({ user: $('loginUser').value, password: $('loginPass').value })
+        });
+        token = data.token;
+        localStorage.setItem('panelToken', token);
+        showApp(true);
+        await load();
+      } catch (err) {
+        $('loginMsg').textContent = err.message;
+      }
+    }
+
+    async function save() {
+      const row = formData();
+      if (!row.device_id) {
+        $('formMsg').textContent = 'Pon el ID del dispositivo.';
+        return;
+      }
+      $('formMsg').textContent = 'Guardando...';
+      try {
+        await api('/api/devices', { method: 'POST', body: JSON.stringify(row) });
+        $('formMsg').textContent = 'Guardado.';
+        clearForm();
+        await load();
+      } catch (err) {
+        $('formMsg').textContent = err.message;
+      }
+    }
+
+    function editDevice(id) {
+      const row = devices.find((d) => d.device_id === id);
+      if (row) fillForm(row);
+    }
+
+    async function toggleDevice(id) {
+      const row = devices.find((d) => d.device_id === id);
+      if (!row) return;
+      await api('/api/devices/' + encodeURIComponent(id), {
+        method: 'PATCH',
+        body: JSON.stringify({ ...row, activo: !row.activo })
+      });
+      await load();
+    }
+
+    async function deleteDevice(id) {
+      if (!confirm('Borrar este dispositivo?')) return;
+      await api('/api/devices/' + encodeURIComponent(id), { method: 'DELETE' });
+      await load();
+    }
+
+    $('loginBtn').addEventListener('click', login);
+    $('loginPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+    $('logoutBtn').addEventListener('click', () => { localStorage.removeItem('panelToken'); token = ''; showApp(false); });
+    $('tipoXtream').addEventListener('click', () => setTipo('xtream'));
+    $('tipoM3u').addEventListener('click', () => setTipo('m3u'));
+    $('saveBtn').addEventListener('click', save);
+    $('clearBtn').addEventListener('click', clearForm);
+    $('reloadBtn').addEventListener('click', load);
+    $('search').addEventListener('input', render);
+
+    if (token) {
+      showApp(true);
+      load().catch(() => {
+        localStorage.removeItem('panelToken');
+        token = '';
+        showApp(false);
+      });
+    }
+  </script>
+</body>
+</html>
