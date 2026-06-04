@@ -61,7 +61,19 @@ function cleanDevice(row) {
     usuario: String(row.usuario || '').trim(),
     password: String(row.password || '').trim(),
     m3u_url: String(row.m3u_url || '').trim(),
-    caduca: String(row.caduca || '').trim() || null
+    caduca: String(row.caduca || '').trim() || null,
+    line_id: String(row.line_id || '').trim()
+  };
+}
+
+function cleanLine(row) {
+  return {
+    activo: row.line_activo === false ? false : true,
+    tipo: row.tipo === 'm3u' ? 'm3u' : 'xtream',
+    servidor: String(row.servidor || '').trim(),
+    usuario: String(row.usuario || '').trim(),
+    password: String(row.password || '').trim(),
+    m3u_url: String(row.m3u_url || '').trim()
   };
 }
 
@@ -116,6 +128,35 @@ async function findDevice(deviceId) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
+async function listDevicesWithLines() {
+  const deviceRows = await supabase('/rest/v1/' + DEVICE_TABLE + '?select=id,device_id,activo,caduca');
+  const lineRows = await supabase('/rest/v1/' + LINE_TABLE + '?select=id,dispositivo_id,activo,tipo,servidor,usuario,password,m3u_url');
+  const byId = new Map();
+  for (const d of Array.isArray(deviceRows) ? deviceRows : []) {
+    byId.set(String(d.id), {
+      id: d.id,
+      device_id: d.device_id || '',
+      activo: Boolean(d.activo),
+      caduca: d.caduca || '',
+      lines: []
+    });
+  }
+  for (const l of Array.isArray(lineRows) ? lineRows : []) {
+    const device = byId.get(String(l.dispositivo_id));
+    if (!device) continue;
+    device.lines.push({
+      id: l.id,
+      activo: Boolean(l.activo),
+      tipo: l.tipo || 'xtream',
+      servidor: l.servidor || '',
+      usuario: l.usuario || '',
+      password: l.password || '',
+      m3u_url: l.m3u_url || ''
+    });
+  }
+  return Array.from(byId.values()).sort((a, b) => String(a.device_id).localeCompare(String(b.device_id)));
+}
+
 async function saveDeviceAndLine(row) {
   const existing = await findDevice(row.device_id);
   const devicePayload = {
@@ -139,26 +180,23 @@ async function saveDeviceAndLine(row) {
     throw new Error('No se pudo obtener el ID interno del dispositivo.');
   }
 
-  await supabase('/rest/v1/' + LINE_TABLE + '?dispositivo_id=eq.' + encodeURIComponent(device.id), {
-    method: 'PATCH',
-    headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify({ activo: false })
-  });
-
   const linePayload = {
     dispositivo_id: device.id,
-    activo: true,
-    tipo: row.tipo,
-    servidor: row.servidor,
-    usuario: row.usuario,
-    password: row.password,
-    m3u_url: row.m3u_url
+    ...cleanLine(row)
   };
-  await supabase('/rest/v1/' + LINE_TABLE, {
-    method: 'POST',
-    headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify(linePayload)
-  });
+  if (row.line_id) {
+    await supabase('/rest/v1/' + LINE_TABLE + '?id=eq.' + encodeURIComponent(row.line_id), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify(linePayload)
+    });
+  } else {
+    await supabase('/rest/v1/' + LINE_TABLE, {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify(linePayload)
+    });
+  }
 
   return row;
 }
@@ -183,9 +221,7 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === '/api/devices' && req.method === 'GET') {
-    const rows = await supabase('/rest/v1/' + TABLE + '?select=*');
-    const list = Array.isArray(rows) ? rows.sort((a, b) => String(a.device_id || '').localeCompare(String(b.device_id || ''))) : [];
-    return sendJson(res, 200, { ok: true, devices: list });
+    return sendJson(res, 200, { ok: true, devices: await listDevicesWithLines() });
   }
 
   if (url.pathname === '/api/devices' && req.method === 'POST') {
@@ -198,7 +234,18 @@ async function handleApi(req, res, url) {
   const match = url.pathname.match(/^\/api\/devices\/([^/]+)$/);
   if (match && req.method === 'PATCH') {
     const id = decodeURIComponent(match[1]);
-    const row = cleanDevice({ ...(await readJson(req)), device_id: id });
+    const body = await readJson(req);
+    if (body.device_only) {
+      const existing = await findDevice(id);
+      if (!existing) return sendJson(res, 404, { ok: false, message: 'Dispositivo no encontrado.' });
+      await supabase('/rest/v1/' + DEVICE_TABLE + '?id=eq.' + encodeURIComponent(existing.id), {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ activo: Boolean(body.activo), caduca: String(body.caduca || '').trim() || null })
+      });
+      return sendJson(res, 200, { ok: true });
+    }
+    const row = cleanDevice({ ...body, device_id: id });
     const saved = await saveDeviceAndLine(row);
     return sendJson(res, 200, { ok: true, device: saved });
   }
@@ -213,6 +260,16 @@ async function handleApi(req, res, url) {
       });
     }
     await supabase('/rest/v1/' + DEVICE_TABLE + '?device_id=eq.' + encodedDevice(id), {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' }
+    });
+    return sendJson(res, 200, { ok: true });
+  }
+
+  const lineMatch = url.pathname.match(/^\/api\/devices\/([^/]+)\/lines\/([^/]+)$/);
+  if (lineMatch && req.method === 'DELETE') {
+    const lineId = decodeURIComponent(lineMatch[2]);
+    await supabase('/rest/v1/' + LINE_TABLE + '?id=eq.' + encodeURIComponent(lineId), {
       method: 'DELETE',
       headers: { Prefer: 'return=minimal' }
     });
