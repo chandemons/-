@@ -154,6 +154,7 @@
         </div>
         <div class="body grid">
           <label>ID del dispositivo <input id="deviceId" placeholder="Ejemplo: 1a2b3c4d5e"></label>
+          <input id="lineId" type="hidden">
           <label class="switch">Activado <input id="activo" type="checkbox" checked></label>
           <label>Tipo de linea</label>
           <div class="seg">
@@ -172,7 +173,7 @@
           </div>
           <label>Caduca <input id="caduca" type="date"></label>
           <div class="actions">
-            <button id="saveBtn">Guardar</button>
+            <button id="saveBtn">Guardar linea</button>
             <button id="clearBtn" class="secondary" type="button">Limpiar</button>
           </div>
           <div id="formMsg" class="message"></div>
@@ -246,6 +247,7 @@
     function formData() {
       return {
         device_id: $('deviceId').value.trim(),
+        line_id: $('lineId').value.trim(),
         activo: $('activo').checked,
         tipo,
         servidor: $('servidor').value.trim(),
@@ -258,6 +260,7 @@
 
     function fillForm(row) {
       $('deviceId').value = row.device_id || '';
+      $('lineId').value = row.line_id || row.id || '';
       $('activo').checked = Boolean(row.activo);
       setTipo(row.tipo === 'm3u' ? 'm3u' : 'xtream');
       $('servidor').value = row.servidor || '';
@@ -265,13 +268,14 @@
       $('password').value = row.password || '';
       $('m3uUrl').value = row.m3u_url || '';
       $('caduca').value = row.caduca || '';
-      $('formTitle').textContent = 'Editar dispositivo';
+      $('formTitle').textContent = $('lineId').value ? 'Editar linea' : 'Editar dispositivo';
       $('editingBadge').classList.remove('hidden');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function clearForm() {
       $('deviceId').value = '';
+      $('lineId').value = '';
       $('activo').checked = true;
       setTipo('xtream');
       $('servidor').value = '';
@@ -297,18 +301,24 @@
       $('empty').classList.toggle('hidden', filtered.length !== 0);
       $('rows').innerHTML = filtered.map((row) => {
         const [cls, text] = stateOf(row);
-        const line = row.tipo === 'm3u'
-          ? `<div class="muted">${escapeHtml(row.m3u_url || '')}</div>`
-          : `<div><b>${escapeHtml(row.usuario || '')}</b></div><div class="muted">${escapeHtml(row.servidor || '')}</div>`;
+        const lines = row.lines || [];
+        const line = lines.length ? lines.map((l) => {
+          const label = l.tipo === 'm3u' ? (l.m3u_url || '') : ((l.usuario || '') + ' - ' + (l.servidor || ''));
+          return `<div class="muted" style="margin-bottom:7px">
+            <b>${escapeHtml(l.tipo || 'xtream')}</b> ${escapeHtml(label)}
+            <button class="secondary" onclick='editLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Editar</button>
+            <button class="danger" onclick='deleteLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Borrar</button>
+          </div>`;
+        }).join('') : '<div class="muted">Sin lineas</div>';
         return `<tr>
           <td><div class="device">${escapeHtml(row.device_id || '')}</div></td>
           <td><span class="status ${cls}">${text}</span></td>
-          <td><span class="pill">${escapeHtml(row.tipo || 'xtream')}</span></td>
+          <td><span class="pill">${lines.length} lineas</span></td>
           <td>${line}</td>
           <td>${escapeHtml(row.caduca || 'Sin fecha')}</td>
           <td>
             <div class="actions">
-              <button class="secondary" onclick='editDevice(${JSON.stringify(row.device_id)})'>Editar</button>
+              <button class="secondary" onclick='addLine(${JSON.stringify(row.device_id)})'>Anadir linea</button>
               <button class="secondary" onclick='toggleDevice(${JSON.stringify(row.device_id)})'>${row.activo ? 'Apagar' : 'Activar'}</button>
               <button class="danger" onclick='deleteDevice(${JSON.stringify(row.device_id)})'>Borrar</button>
             </div>
@@ -364,7 +374,32 @@
 
     function editDevice(id) {
       const row = devices.find((d) => d.device_id === id);
-      if (row) fillForm(row);
+      if (row) addLine(id);
+    }
+
+    function addLine(id) {
+      const row = devices.find((d) => d.device_id === id);
+      if (!row) return;
+      clearForm();
+      $('deviceId').value = row.device_id || '';
+      $('activo').checked = Boolean(row.activo);
+      $('caduca').value = row.caduca || '';
+      $('formTitle').textContent = 'Anadir linea';
+      $('editingBadge').classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function editLine(deviceId, lineId) {
+      const row = devices.find((d) => d.device_id === deviceId);
+      const line = row && (row.lines || []).find((l) => String(l.id) === String(lineId));
+      if (!row || !line) return;
+      fillForm({ ...row, ...line, line_id: line.id });
+    }
+
+    async function deleteLine(deviceId, lineId) {
+      if (!confirm('Borrar esta linea?')) return;
+      await api('/api/devices/' + encodeURIComponent(deviceId) + '/lines/' + encodeURIComponent(lineId), { method: 'DELETE' });
+      await load();
     }
 
     async function toggleDevice(id) {
@@ -372,7 +407,7 @@
       if (!row) return;
       await api('/api/devices/' + encodeURIComponent(id), {
         method: 'PATCH',
-        body: JSON.stringify({ ...row, activo: !row.activo })
+        body: JSON.stringify({ device_only: true, activo: !row.activo, caduca: row.caduca })
       });
       await load();
     }
