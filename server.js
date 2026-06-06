@@ -62,6 +62,9 @@ function cleanDevice(row) {
     password: String(row.password || '').trim(),
     m3u_url: String(row.m3u_url || '').trim(),
     caduca: String(row.caduca || '').trim() || null,
+    vpn_enabled: row.vpn_enabled === true,
+    vpn_tunnel: String(row.vpn_tunnel || '').trim(),
+    vpn_config: String(row.vpn_config || '').trim(),
     line_id: String(row.line_id || '').trim(),
     force_new_line: row.force_new_line === true
   };
@@ -130,7 +133,7 @@ async function findDevice(deviceId) {
 }
 
 async function listDevicesWithLines() {
-  const deviceRows = await supabase('/rest/v1/' + DEVICE_TABLE + '?select=id,device_id,activo,caduca');
+  const deviceRows = await supabase('/rest/v1/' + DEVICE_TABLE + '?select=*');
   const lineRows = await supabase('/rest/v1/' + LINE_TABLE + '?select=id,dispositivo_id,activo,tipo,servidor,usuario,password,m3u_url');
   const byId = new Map();
   for (const d of Array.isArray(deviceRows) ? deviceRows : []) {
@@ -139,6 +142,9 @@ async function listDevicesWithLines() {
       device_id: d.device_id || '',
       activo: Boolean(d.activo),
       caduca: d.caduca || '',
+      vpn_enabled: d.vpn_enabled === true,
+      vpn_tunnel: d.vpn_tunnel || '',
+      vpn_config: d.vpn_config || '',
       lines: []
     });
   }
@@ -163,7 +169,10 @@ async function saveDeviceAndLine(row) {
   const devicePayload = {
     device_id: row.device_id,
     activo: row.activo,
-    caduca: row.caduca
+    caduca: row.caduca,
+    vpn_enabled: row.vpn_enabled,
+    vpn_tunnel: row.vpn_tunnel,
+    vpn_config: row.vpn_config
   };
   const savedDevice = existing
     ? await supabase('/rest/v1/' + DEVICE_TABLE + '?id=eq.' + encodeURIComponent(existing.id), {
@@ -185,7 +194,15 @@ async function saveDeviceAndLine(row) {
     dispositivo_id: device.id,
     ...cleanLine(row)
   };
-  if (row.line_id && !row.force_new_line) {
+
+  let shouldUpdateLine = Boolean(row.line_id && !row.force_new_line);
+  if (shouldUpdateLine) {
+    const currentLine = await supabase('/rest/v1/' + LINE_TABLE + '?id=eq.' + encodeURIComponent(row.line_id) + '&select=id,dispositivo_id');
+    const currentDeviceId = Array.isArray(currentLine) && currentLine[0] ? String(currentLine[0].dispositivo_id) : '';
+    if (currentDeviceId && currentDeviceId !== String(device.id)) shouldUpdateLine = false;
+  }
+
+  if (shouldUpdateLine) {
     await supabase('/rest/v1/' + LINE_TABLE + '?id=eq.' + encodeURIComponent(row.line_id), {
       method: 'PATCH',
       headers: { Prefer: 'return=minimal' },
