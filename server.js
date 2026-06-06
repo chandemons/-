@@ -62,7 +62,8 @@ function cleanDevice(row) {
     password: String(row.password || '').trim(),
     m3u_url: String(row.m3u_url || '').trim(),
     caduca: String(row.caduca || '').trim() || null,
-    line_id: String(row.line_id || '').trim()
+    line_id: String(row.line_id || '').trim(),
+    force_new_line: row.force_new_line === true
   };
 }
 
@@ -184,7 +185,7 @@ async function saveDeviceAndLine(row) {
     dispositivo_id: device.id,
     ...cleanLine(row)
   };
-  if (row.line_id) {
+  if (row.line_id && !row.force_new_line) {
     await supabase('/rest/v1/' + LINE_TABLE + '?id=eq.' + encodeURIComponent(row.line_id), {
       method: 'PATCH',
       headers: { Prefer: 'return=minimal' },
