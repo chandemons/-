@@ -248,6 +248,7 @@
       return {
         device_id: $('deviceId').value.trim(),
         line_id: $('lineId').value.trim(),
+        force_new_line: $('lineId').dataset.forceNew === '1',
         activo: $('activo').checked,
         tipo,
         servidor: $('servidor').value.trim(),
@@ -276,6 +277,7 @@
     function clearForm() {
       $('deviceId').value = '';
       $('lineId').value = '';
+      $('lineId').dataset.forceNew = '';
       $('activo').checked = true;
       setTipo('xtream');
       $('servidor').value = '';
@@ -307,6 +309,7 @@
           return `<div class="muted" style="margin-bottom:7px">
             <b>${escapeHtml(l.tipo || 'xtream')}</b> ${escapeHtml(label)}
             <button class="secondary" onclick='editLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Editar</button>
+            <button class="secondary" onclick='duplicateLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Duplicar</button>
             <button class="danger" onclick='deleteLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Borrar</button>
           </div>`;
         }).join('') : '<div class="muted">Sin lineas</div>';
@@ -394,6 +397,16 @@
       const line = row && (row.lines || []).find((l) => String(l.id) === String(lineId));
       if (!row || !line) return;
       fillForm({ ...row, ...line, line_id: line.id });
+      $('lineId').dataset.forceNew = '';
+    }
+
+    function duplicateLine(deviceId, lineId) {
+      const row = devices.find((d) => d.device_id === deviceId);
+      const line = row && (row.lines || []).find((l) => String(l.id) === String(lineId));
+      if (!row || !line) return;
+      fillForm({ ...row, ...line, line_id: '' });
+      $('lineId').dataset.forceNew = '1';
+      $('formTitle').textContent = 'Duplicar linea';
     }
 
     async function deleteLine(deviceId, lineId) {
