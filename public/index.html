@@ -27,7 +27,7 @@
       color: var(--text);
       font-family: Arial, Helvetica, sans-serif;
     }
-    button, input, select {
+    button, input, select, textarea {
       font: inherit;
     }
     button {
@@ -43,7 +43,7 @@
     button.secondary { background: #29435f; }
     button.danger { background: #bc2942; }
     button.ghost { background: transparent; border: 1px solid var(--line); }
-    input, select {
+    input, select, textarea {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -52,7 +52,8 @@
       color: var(--text);
       outline: none;
     }
-    input:focus, select:focus { border-color: var(--blue2); box-shadow: 0 0 0 3px #168bff33; }
+    textarea { min-height: 170px; resize: vertical; line-height: 1.35; }
+    input:focus, select:focus, textarea:focus { border-color: var(--blue2); box-shadow: 0 0 0 3px #168bff33; }
     label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 700; }
     .wrap { width: min(1280px, calc(100% - 28px)); margin: 0 auto; padding: 22px 0 34px; }
     .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
@@ -172,6 +173,10 @@
             <label>URL M3U <input id="m3uUrl" placeholder="http://servidor/lista.m3u"></label>
           </div>
           <label>Caduca <input id="caduca" type="date"></label>
+          <label class="switch">VPN WireGuard <input id="vpnEnabled" type="checkbox"></label>
+          <label>Nombre tunel VPN <input id="vpnTunnel" placeholder="Ejemplo: cliente1"></label>
+          <label>Archivo VPN .conf <input id="vpnFile" type="file" accept=".conf,text/plain"></label>
+          <label>Datos VPN <textarea id="vpnConfig" spellcheck="false" placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = ..."></textarea></label>
           <div class="actions">
             <button id="saveBtn">Guardar linea</button>
             <button id="clearBtn" class="secondary" type="button">Limpiar</button>
@@ -245,23 +250,29 @@
     }
 
     function formData() {
+      const originalDeviceId = $('lineId').dataset.originalDeviceId || '';
+      const currentDeviceId = $('deviceId').value.trim();
       return {
-        device_id: $('deviceId').value.trim(),
+        device_id: currentDeviceId,
         line_id: $('lineId').value.trim(),
-        force_new_line: $('lineId').dataset.forceNew === '1',
+        force_new_line: $('lineId').dataset.forceNew === '1' || Boolean($('lineId').value.trim() && originalDeviceId && originalDeviceId !== currentDeviceId),
         activo: $('activo').checked,
         tipo,
         servidor: $('servidor').value.trim(),
         usuario: $('usuario').value.trim(),
         password: $('password').value.trim(),
         m3u_url: $('m3uUrl').value.trim(),
-        caduca: $('caduca').value
+        caduca: $('caduca').value,
+        vpn_enabled: $('vpnEnabled').checked,
+        vpn_tunnel: $('vpnTunnel').value.trim(),
+        vpn_config: $('vpnConfig').value.trim()
       };
     }
 
     function fillForm(row) {
       $('deviceId').value = row.device_id || '';
       $('lineId').value = row.line_id || row.id || '';
+      $('lineId').dataset.originalDeviceId = row.device_id || '';
       $('activo').checked = Boolean(row.activo);
       setTipo(row.tipo === 'm3u' ? 'm3u' : 'xtream');
       $('servidor').value = row.servidor || '';
@@ -269,6 +280,9 @@
       $('password').value = row.password || '';
       $('m3uUrl').value = row.m3u_url || '';
       $('caduca').value = row.caduca || '';
+      $('vpnEnabled').checked = row.vpn_enabled === true;
+      $('vpnTunnel').value = row.vpn_tunnel || '';
+      $('vpnConfig').value = row.vpn_config || '';
       $('formTitle').textContent = $('lineId').value ? 'Editar linea' : 'Editar dispositivo';
       $('editingBadge').classList.remove('hidden');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -278,6 +292,7 @@
       $('deviceId').value = '';
       $('lineId').value = '';
       $('lineId').dataset.forceNew = '';
+      $('lineId').dataset.originalDeviceId = '';
       $('activo').checked = true;
       setTipo('xtream');
       $('servidor').value = '';
@@ -285,6 +300,10 @@
       $('password').value = '';
       $('m3uUrl').value = '';
       $('caduca').value = '';
+      $('vpnEnabled').checked = false;
+      $('vpnTunnel').value = '';
+      $('vpnConfig').value = '';
+      $('vpnFile').value = '';
       $('formTitle').textContent = 'Nuevo dispositivo';
       $('editingBadge').classList.add('hidden');
       $('formMsg').textContent = '';
@@ -316,7 +335,7 @@
         return `<tr>
           <td><div class="device">${escapeHtml(row.device_id || '')}</div></td>
           <td><span class="status ${cls}">${text}</span></td>
-          <td><span class="pill">${lines.length} lineas</span></td>
+          <td><span class="pill">${lines.length} lineas</span>${row.vpn_config ? '<br><span class="pill">VPN</span>' : ''}</td>
           <td>${line}</td>
           <td>${escapeHtml(row.caduca || 'Sin fecha')}</td>
           <td>
@@ -387,6 +406,9 @@
       $('deviceId').value = row.device_id || '';
       $('activo').checked = Boolean(row.activo);
       $('caduca').value = row.caduca || '';
+      $('vpnEnabled').checked = row.vpn_enabled === true;
+      $('vpnTunnel').value = row.vpn_tunnel || '';
+      $('vpnConfig').value = row.vpn_config || '';
       $('formTitle').textContent = 'Anadir linea';
       $('editingBadge').classList.remove('hidden');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -440,6 +462,13 @@
     $('clearBtn').addEventListener('click', clearForm);
     $('reloadBtn').addEventListener('click', load);
     $('search').addEventListener('input', render);
+    $('vpnFile').addEventListener('change', async () => {
+      const file = $('vpnFile').files && $('vpnFile').files[0];
+      if (!file) return;
+      $('vpnConfig').value = await file.text();
+      if (!$('vpnTunnel').value.trim()) $('vpnTunnel').value = file.name.replace(/\.conf$/i, '');
+      $('vpnEnabled').checked = true;
+    });
 
     if (token) {
       showApp(true);
