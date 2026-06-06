@@ -14,6 +14,28 @@ Usa la tabla `apk_config` de Supabase, la misma que consulta la APK.
 - `password`
 - `m3u_url`
 - `caduca`
+- `vpn_enabled`
+- `vpn_tunnel`
+- `vpn_config`
+
+## Campos VPN en Supabase
+
+Para cargar WireGuard desde el panel, la tabla de dispositivos necesita estos campos:
+
+```sql
+alter table public.dispositivos
+add column if not exists vpn_enabled boolean default false,
+add column if not exists vpn_tunnel text,
+add column if not exists vpn_config text;
+```
+
+Si la APK lee una vista llamada `apk_config`, esa vista tambien debe exponer:
+
+```text
+vpn_enabled
+vpn_tunnel
+vpn_config
+```
 
 ## Probar en el ordenador
 
