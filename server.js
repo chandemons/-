@@ -81,6 +81,15 @@ function cleanLine(row) {
   };
 }
 
+function deviceMessage(row) {
+  if (!row.vpn_config) return '';
+  return JSON.stringify({
+    vpn_enabled: row.vpn_enabled === true,
+    vpn_tunnel: row.vpn_tunnel || '',
+    vpn_config: row.vpn_config || ''
+  });
+}
+
 function requireAuth(req, res) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
@@ -170,6 +179,7 @@ async function saveDeviceAndLine(row) {
     device_id: row.device_id,
     activo: row.activo,
     caduca: row.caduca,
+    mensaje: deviceMessage(row),
     vpn_enabled: row.vpn_enabled,
     vpn_tunnel: row.vpn_tunnel,
     vpn_config: row.vpn_config
@@ -216,7 +226,28 @@ async function saveDeviceAndLine(row) {
     });
   }
 
+  await syncLegacyApkConfig(row);
   return row;
+}
+
+async function syncLegacyApkConfig(row) {
+  if (!TABLE) return;
+  const payload = {
+    activo: row.activo,
+    caduca: row.caduca,
+    mensaje: deviceMessage(row)
+  };
+  try {
+    await supabase('/rest/v1/' + TABLE + '?device_id=eq.' + encodedDevice(row.device_id), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    if (!/column .*mensaje|could not find .*mensaje|cannot update view/i.test(String(err.message || ''))) {
+      throw err;
+    }
+  }
 }
 
 async function handleApi(req, res, url) {
