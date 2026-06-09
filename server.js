@@ -81,6 +81,25 @@ function cleanLine(row) {
   };
 }
 
+function cleanAppLine(row) {
+  return {
+    activo: true,
+    tipo: row.tipo === 'm3u' ? 'm3u' : 'xtream',
+    servidor: String(row.servidor || '').trim(),
+    usuario: String(row.usuario || '').trim(),
+    password: String(row.password || '').trim(),
+    m3u_url: String(row.m3u_url || '').trim()
+  };
+}
+
+function sameLine(a, b) {
+  return String(a.tipo || 'xtream') === String(b.tipo || 'xtream')
+    && String(a.servidor || '').trim() === String(b.servidor || '').trim()
+    && String(a.usuario || '').trim() === String(b.usuario || '').trim()
+    && String(a.password || '').trim() === String(b.password || '').trim()
+    && String(a.m3u_url || '').trim() === String(b.m3u_url || '').trim();
+}
+
 function deviceMessage(row) {
   if (!row.vpn_config) return '';
   return JSON.stringify({
@@ -139,6 +158,74 @@ function encodedDevice(id) {
 async function findDevice(deviceId) {
   const rows = await supabase('/rest/v1/' + DEVICE_TABLE + '?device_id=eq.' + encodedDevice(deviceId) + '&select=id,device_id');
   return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function ensureAppDevice(deviceId) {
+  const existing = await findDevice(deviceId);
+  if (existing) return existing;
+  const rows = await supabase('/rest/v1/' + DEVICE_TABLE, {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({
+      device_id: deviceId,
+      activo: false,
+      caduca: null,
+      mensaje: '',
+      vpn_enabled: false,
+      vpn_tunnel: '',
+      vpn_config: ''
+    })
+  });
+  const created = Array.isArray(rows) ? rows[0] : rows;
+  if (!created || created.id === undefined || created.id === null) {
+    throw new Error('No se pudo crear el dispositivo en el panel.');
+  }
+  return created;
+}
+
+async function appSaveLine(deviceId, input) {
+  const line = cleanAppLine(input);
+  if (line.tipo === 'm3u' && !line.m3u_url) throw new Error('Falta la URL M3U.');
+  if (line.tipo === 'xtream' && (!line.servidor || !line.usuario || !line.password)) {
+    throw new Error('Faltan servidor, usuario o contrasena Xtream.');
+  }
+  const device = await ensureAppDevice(deviceId);
+  const rows = await supabase('/rest/v1/' + LINE_TABLE + '?dispositivo_id=eq.' + encodeURIComponent(device.id)
+    + '&select=id,activo,tipo,servidor,usuario,password,m3u_url');
+  const existing = (Array.isArray(rows) ? rows : []).find(row => sameLine(row, line));
+  if (existing) {
+    if (!existing.activo) {
+      await supabase('/rest/v1/' + LINE_TABLE + '?id=eq.' + encodeURIComponent(existing.id), {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ activo: true })
+      });
+    }
+    return existing.id;
+  }
+  const saved = await supabase('/rest/v1/' + LINE_TABLE, {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ dispositivo_id: device.id, ...line })
+  });
+  const created = Array.isArray(saved) ? saved[0] : saved;
+  return created && created.id;
+}
+
+async function appDeleteLine(deviceId, input) {
+  const device = await findDevice(deviceId);
+  if (!device) return 0;
+  const line = cleanAppLine(input);
+  const rows = await supabase('/rest/v1/' + LINE_TABLE + '?dispositivo_id=eq.' + encodeURIComponent(device.id)
+    + '&select=id,activo,tipo,servidor,usuario,password,m3u_url');
+  const matches = (Array.isArray(rows) ? rows : []).filter(row => sameLine(row, line));
+  for (const match of matches) {
+    await supabase('/rest/v1/' + LINE_TABLE + '?id=eq.' + encodeURIComponent(match.id), {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' }
+    });
+  }
+  return matches.length;
 }
 
 async function listDevicesWithLines() {
@@ -230,6 +317,51 @@ async function saveDeviceAndLine(row) {
   return row;
 }
 
+async function renameDevice(oldDeviceId, newDeviceId) {
+  const oldId = String(oldDeviceId || '').trim();
+  const newId = String(newDeviceId || '').trim();
+  if (!oldId || !newId) throw new Error('Falta el ID antiguo o el ID nuevo.');
+  if (oldId === newId) return { oldDeviceId: oldId, newDeviceId: newId };
+
+  const oldDevice = await findDevice(oldId);
+  if (!oldDevice) throw new Error('No se encontro el dispositivo antiguo.');
+
+  const existingNew = await findDevice(newId);
+  if (existingNew && String(existingNew.id) !== String(oldDevice.id)) {
+    await supabase('/rest/v1/' + LINE_TABLE + '?dispositivo_id=eq.' + encodeURIComponent(oldDevice.id), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ dispositivo_id: existingNew.id })
+    });
+    await supabase('/rest/v1/' + DEVICE_TABLE + '?id=eq.' + encodeURIComponent(oldDevice.id), {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' }
+    });
+  } else {
+    await supabase('/rest/v1/' + DEVICE_TABLE + '?id=eq.' + encodeURIComponent(oldDevice.id), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ device_id: newId })
+    });
+  }
+
+  if (TABLE) {
+    try {
+      await supabase('/rest/v1/' + TABLE + '?device_id=eq.' + encodedDevice(oldId), {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ device_id: newId })
+      });
+    } catch (err) {
+      if (!/cannot update view|column .*device_id|could not find .*device_id/i.test(String(err.message || ''))) {
+        throw err;
+      }
+    }
+  }
+
+  return { oldDeviceId: oldId, newDeviceId: newId };
+}
+
 async function syncLegacyApkConfig(row) {
   if (!TABLE) return;
   const payload = {
@@ -261,6 +393,21 @@ async function handleApi(req, res, url) {
     const token = crypto.randomBytes(32).toString('hex');
     sessions.set(token, Date.now());
     return sendJson(res, 200, { ok: true, token, user: ADMIN_USER });
+  }
+
+  const appLineMatch = url.pathname.match(/^\/api\/app\/devices\/([^/]+)\/lines$/);
+  if (appLineMatch && (req.method === 'POST' || req.method === 'DELETE')) {
+    const deviceId = decodeURIComponent(appLineMatch[1]).trim();
+    if (!deviceId || deviceId === 'unknown') {
+      return sendJson(res, 400, { ok: false, message: 'ID de dispositivo no valido.' });
+    }
+    const body = await readJson(req);
+    if (req.method === 'POST') {
+      const lineId = await appSaveLine(deviceId, body);
+      return sendJson(res, 200, { ok: true, line_id: lineId });
+    }
+    const deleted = await appDeleteLine(deviceId, body);
+    return sendJson(res, 200, { ok: true, deleted });
   }
 
   if (!requireAuth(req, res)) return;
@@ -297,6 +444,14 @@ async function handleApi(req, res, url) {
     const row = cleanDevice({ ...body, device_id: id });
     const saved = await saveDeviceAndLine(row);
     return sendJson(res, 200, { ok: true, device: saved });
+  }
+
+  const renameMatch = url.pathname.match(/^\/api\/devices\/([^/]+)\/rename$/);
+  if (renameMatch && req.method === 'POST') {
+    const oldId = decodeURIComponent(renameMatch[1]);
+    const body = await readJson(req);
+    const renamed = await renameDevice(oldId, body.new_device_id);
+    return sendJson(res, 200, { ok: true, ...renamed });
   }
 
   if (match && req.method === 'DELETE') {
