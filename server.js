@@ -25,6 +25,7 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABA
 const TABLE = process.env.SUPABASE_TABLE || 'apk_config';
 const DEVICE_TABLE = process.env.SUPABASE_DEVICE_TABLE || 'dispositivos';
 const LINE_TABLE = process.env.SUPABASE_LINE_TABLE || 'lineas';
+const PANEL_USER_TABLE = process.env.SUPABASE_PANEL_USER_TABLE || 'panel_users';
 const ALLOW_APP_LINE_WRITE = process.env.ALLOW_APP_LINE_WRITE === 'true';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const sessions = new Map();
@@ -67,7 +68,8 @@ function cleanDevice(row) {
     vpn_tunnel: String(row.vpn_tunnel || '').trim(),
     vpn_config: String(row.vpn_config || '').trim(),
     line_id: String(row.line_id || '').trim(),
-    force_new_line: row.force_new_line === true
+    force_new_line: row.force_new_line === true,
+    credit_months: Number(row.credit_months || 0)
   };
 }
 
@@ -117,7 +119,8 @@ function requireAuth(req, res) {
     sendJson(res, 401, { ok: false, message: 'Entra otra vez en el panel.' });
     return false;
   }
-  sessions.set(token, Date.now());
+  req.session = sessions.get(token);
+  req.session.touched = Date.now();
   return true;
 }
 
@@ -157,8 +160,74 @@ function encodedDevice(id) {
 }
 
 async function findDevice(deviceId) {
-  const rows = await supabase('/rest/v1/' + DEVICE_TABLE + '?device_id=eq.' + encodedDevice(deviceId) + '&select=id,device_id');
+  const rows = await supabase('/rest/v1/' + DEVICE_TABLE + '?device_id=eq.' + encodedDevice(deviceId) + '&select=id,device_id,owner_user,caduca');
   return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+function todayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addMonths(dateText, months) {
+  const base = dateText && new Date(dateText + 'T12:00:00') > new Date()
+    ? new Date(dateText + 'T12:00:00')
+    : new Date();
+  base.setMonth(base.getMonth() + Math.max(0, Number(months || 0)));
+  return base.toISOString().slice(0, 10);
+}
+
+function managedBy(req, owner) {
+  return req.session && (req.session.isAdmin || String(owner || '') === req.session.user);
+}
+
+async function panelUser(username) {
+  const rows = await supabase('/rest/v1/' + PANEL_USER_TABLE + '?username=eq.' + encodeURIComponent(username) + '&select=*');
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function listPanelUsers() {
+  const rows = await supabase('/rest/v1/' + PANEL_USER_TABLE + '?select=username,credits,created_at&order=username.asc');
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function createPanelUser(username, password, credits) {
+  if (!username || !password) throw new Error('Faltan usuario o contrasena.');
+  if (username === ADMIN_USER) throw new Error('Ese usuario esta reservado.');
+  const rows = await supabase('/rest/v1/' + PANEL_USER_TABLE, {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ username, password, credits: Math.max(0, Number(credits || 0)) })
+  });
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
+async function addPanelCredits(username, addCredits) {
+  const user = await panelUser(username);
+  if (!user) throw new Error('Subusuario no encontrado.');
+  const next = Math.max(0, Number(user.credits || 0) + Number(addCredits || 0));
+  await supabase('/rest/v1/' + PANEL_USER_TABLE + '?username=eq.' + encodeURIComponent(username), {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ credits: next })
+  });
+  return next;
+}
+
+async function spendCredits(req, months) {
+  const amount = Math.max(0, Number(months || 0));
+  if (!amount || req.session.isAdmin) return null;
+  const user = await panelUser(req.session.user);
+  if (!user) throw new Error('Subusuario no encontrado.');
+  const current = Number(user.credits || 0);
+  if (current < amount) throw new Error('No tienes creditos suficientes. Necesitas ' + amount + ' credito(s).');
+  const next = current - amount;
+  await supabase('/rest/v1/' + PANEL_USER_TABLE + '?username=eq.' + encodeURIComponent(req.session.user), {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ credits: next })
+  });
+  req.session.credits = next;
+  return next;
 }
 
 async function ensureAppDevice(deviceId) {
@@ -229,8 +298,9 @@ async function appDeleteLine(deviceId, input) {
   return matches.length;
 }
 
-async function listDevicesWithLines() {
-  const deviceRows = await supabase('/rest/v1/' + DEVICE_TABLE + '?select=*');
+async function listDevicesWithLines(req) {
+  const ownerFilter = req.session.isAdmin ? '' : '&owner_user=eq.' + encodeURIComponent(req.session.user);
+  const deviceRows = await supabase('/rest/v1/' + DEVICE_TABLE + '?select=*' + ownerFilter);
   const lineRows = await supabase('/rest/v1/' + LINE_TABLE + '?select=id,dispositivo_id,activo,tipo,servidor,usuario,password,m3u_url');
   const byId = new Map();
   for (const d of Array.isArray(deviceRows) ? deviceRows : []) {
@@ -239,6 +309,7 @@ async function listDevicesWithLines() {
       device_id: d.device_id || '',
       activo: Boolean(d.activo),
       caduca: d.caduca || '',
+      owner_user: d.owner_user || '',
       vpn_enabled: d.vpn_enabled === true,
       vpn_tunnel: d.vpn_tunnel || '',
       vpn_config: d.vpn_config || '',
@@ -261,12 +332,22 @@ async function listDevicesWithLines() {
   return Array.from(byId.values()).sort((a, b) => String(a.device_id).localeCompare(String(b.device_id)));
 }
 
-async function saveDeviceAndLine(row) {
+async function saveDeviceAndLine(row, req) {
   const existing = await findDevice(row.device_id);
+  if (existing && !managedBy(req, existing.owner_user)) {
+    throw new Error('No puedes modificar un dispositivo de otro subusuario.');
+  }
+  const months = Math.max(0, Number(row.credit_months || 0));
+  if (months > 0) row.caduca = addMonths(existing && existing.caduca, months);
+  if (!req.session.isAdmin && !existing && months <= 0) {
+    throw new Error('Indica cuantos meses quieres activar. 1 credito = 1 mes.');
+  }
+  const nextCredits = await spendCredits(req, months);
   const devicePayload = {
     device_id: row.device_id,
     activo: row.activo,
     caduca: row.caduca,
+    owner_user: existing && existing.owner_user ? existing.owner_user : req.session.user,
     mensaje: deviceMessage(row),
     vpn_enabled: row.vpn_enabled,
     vpn_tunnel: row.vpn_tunnel,
@@ -315,7 +396,7 @@ async function saveDeviceAndLine(row) {
   }
 
   await syncLegacyApkConfig(row);
-  return row;
+  return { ...row, creditsRemaining: nextCredits };
 }
 
 async function renameDevice(oldDeviceId, newDeviceId) {
@@ -388,12 +469,21 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const user = String(body.user || '').trim();
     const pass = String(body.password || '');
-    if (user !== ADMIN_USER || pass !== ADMIN_PASSWORD) {
+    let session = null;
+    if (user === ADMIN_USER && pass === ADMIN_PASSWORD) {
+      session = { user: ADMIN_USER, isAdmin: true, credits: null, touched: Date.now() };
+    } else {
+      const panel = await panelUser(user);
+      if (panel && String(panel.password || '') === pass) {
+        session = { user, isAdmin: false, credits: Number(panel.credits || 0), touched: Date.now() };
+      }
+    }
+    if (!session) {
       return sendJson(res, 401, { ok: false, message: 'Usuario o contrasena incorrectos.' });
     }
     const token = crypto.randomBytes(32).toString('hex');
-    sessions.set(token, Date.now());
-    return sendJson(res, 200, { ok: true, token, user: ADMIN_USER });
+    sessions.set(token, session);
+    return sendJson(res, 200, { ok: true, token, user: session.user, isAdmin: session.isAdmin, credits: session.credits });
   }
 
   const appLineMatch = url.pathname.match(/^\/api\/app\/devices\/([^/]+)\/lines$/);
@@ -420,17 +510,36 @@ async function handleApi(req, res, url) {
   if (!requireAuth(req, res)) return;
 
   if (url.pathname === '/api/me' && req.method === 'GET') {
-    return sendJson(res, 200, { ok: true, user: ADMIN_USER });
+    return sendJson(res, 200, { ok: true, user: req.session.user, isAdmin: req.session.isAdmin, credits: req.session.credits });
+  }
+
+  if (url.pathname === '/api/users' && req.method === 'GET') {
+    if (!req.session.isAdmin) return sendJson(res, 403, { ok: false, message: 'Solo admin puede ver subusuarios.' });
+    return sendJson(res, 200, { ok: true, users: await listPanelUsers() });
+  }
+
+  if (url.pathname === '/api/users' && req.method === 'POST') {
+    if (!req.session.isAdmin) return sendJson(res, 403, { ok: false, message: 'Solo admin puede crear subusuarios.' });
+    const body = await readJson(req);
+    const created = await createPanelUser(String(body.username || '').trim(), String(body.password || ''), body.credits);
+    return sendJson(res, 200, { ok: true, user: created });
+  }
+
+  if (url.pathname === '/api/users/credits' && req.method === 'POST') {
+    if (!req.session.isAdmin) return sendJson(res, 403, { ok: false, message: 'Solo admin puede cargar creditos.' });
+    const body = await readJson(req);
+    const credits = await addPanelCredits(String(body.username || '').trim(), body.addCredits);
+    return sendJson(res, 200, { ok: true, credits });
   }
 
   if (url.pathname === '/api/devices' && req.method === 'GET') {
-    return sendJson(res, 200, { ok: true, devices: await listDevicesWithLines() });
+    return sendJson(res, 200, { ok: true, devices: await listDevicesWithLines(req), user: req.session.user, isAdmin: req.session.isAdmin, credits: req.session.credits });
   }
 
   if (url.pathname === '/api/devices' && req.method === 'POST') {
     const row = cleanDevice(await readJson(req));
     if (!row.device_id) return sendJson(res, 400, { ok: false, message: 'Falta el ID del dispositivo.' });
-    const saved = await saveDeviceAndLine(row);
+    const saved = await saveDeviceAndLine(row, req);
     return sendJson(res, 200, { ok: true, device: saved });
   }
 
@@ -441,6 +550,7 @@ async function handleApi(req, res, url) {
     if (body.device_only) {
       const existing = await findDevice(id);
       if (!existing) return sendJson(res, 404, { ok: false, message: 'Dispositivo no encontrado.' });
+      if (!managedBy(req, existing.owner_user)) return sendJson(res, 403, { ok: false, message: 'No puedes modificar un dispositivo de otro subusuario.' });
       await supabase('/rest/v1/' + DEVICE_TABLE + '?id=eq.' + encodeURIComponent(existing.id), {
         method: 'PATCH',
         headers: { Prefer: 'return=minimal' },
@@ -449,12 +559,13 @@ async function handleApi(req, res, url) {
       return sendJson(res, 200, { ok: true });
     }
     const row = cleanDevice({ ...body, device_id: id });
-    const saved = await saveDeviceAndLine(row);
+    const saved = await saveDeviceAndLine(row, req);
     return sendJson(res, 200, { ok: true, device: saved });
   }
 
   const renameMatch = url.pathname.match(/^\/api\/devices\/([^/]+)\/rename$/);
   if (renameMatch && req.method === 'POST') {
+    if (!req.session.isAdmin) return sendJson(res, 403, { ok: false, message: 'Solo admin puede cambiar IDs.' });
     const oldId = decodeURIComponent(renameMatch[1]);
     const body = await readJson(req);
     const renamed = await renameDevice(oldId, body.new_device_id);
@@ -462,6 +573,7 @@ async function handleApi(req, res, url) {
   }
 
   if (match && req.method === 'DELETE') {
+    if (!req.session.isAdmin) return sendJson(res, 403, { ok: false, message: 'Solo admin puede borrar dispositivos.' });
     const id = decodeURIComponent(match[1]);
     const device = await findDevice(id);
     if (device && device.id !== undefined && device.id !== null) {
@@ -479,6 +591,7 @@ async function handleApi(req, res, url) {
 
   const lineMatch = url.pathname.match(/^\/api\/devices\/([^/]+)\/lines\/([^/]+)$/);
   if (lineMatch && req.method === 'DELETE') {
+    if (!req.session.isAdmin) return sendJson(res, 403, { ok: false, message: 'Solo admin puede borrar lineas.' });
     const lineId = decodeURIComponent(lineMatch[2]);
     await supabase('/rest/v1/' + LINE_TABLE + '?id=eq.' + encodeURIComponent(lineId), {
       method: 'DELETE',
