@@ -1,6 +1,6 @@
-﻿{
-    "apkUrl":  "https://download1320.mediafire.com/q7ul6eqq63eghbUEOKAepOLre9CdggQ1b5ftm1gJzhISlgvEms3Byznc-TmZjKRvPxzW1coxXFZgOLoJJm2GHz52h0Qtu7qjAdPF1ZQ-mZCvpdSmP6zQ_nVZbQFe7NS_ToZTMrO1xcs0yq5ylU3IkokopdSlmQb3Qtbun6pjLEksShyY/1qrvyl3f5iuq4ud/CHANDEMONSTV-2.11-VERSION-22-DESCARGA-MEDIAFIRE-FIX-debug.apk",
+{
+    "apkUrl":  "/CHANDEMONSTV.apk",
     "versionCode":  22,
     "versionName":  "2.11",
-    "notes":  "Arreglo M3U para peliculas y series."
+    "notes":  "Mejora descarga actualizador online."
 }
