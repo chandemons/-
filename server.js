@@ -25,6 +25,7 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABA
 const TABLE = process.env.SUPABASE_TABLE || 'apk_config';
 const DEVICE_TABLE = process.env.SUPABASE_DEVICE_TABLE || 'dispositivos';
 const LINE_TABLE = process.env.SUPABASE_LINE_TABLE || 'lineas';
+const ALLOW_APP_LINE_WRITE = process.env.ALLOW_APP_LINE_WRITE === 'true';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const sessions = new Map();
 
@@ -397,6 +398,12 @@ async function handleApi(req, res, url) {
 
   const appLineMatch = url.pathname.match(/^\/api\/app\/devices\/([^/]+)\/lines$/);
   if (appLineMatch && (req.method === 'POST' || req.method === 'DELETE')) {
+    if (!ALLOW_APP_LINE_WRITE) {
+      return sendJson(res, 403, {
+        ok: false,
+        message: 'La APK no puede cambiar lineas del panel. Edita los codigos solo desde administracion.'
+      });
+    }
     const deviceId = decodeURIComponent(appLineMatch[1]).trim();
     if (!deviceId || deviceId === 'unknown') {
       return sendJson(res, 400, { ok: false, message: 'ID de dispositivo no valido.' });
@@ -487,7 +494,7 @@ function serveStatic(req, res, url) {
   const file = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\/+/, '');
   const target = path.normalize(path.join(PUBLIC_DIR, file));
   if (!target.startsWith(PUBLIC_DIR)) return send(res, 403, 'No permitido');
-  fs.readFile(target, (err, data) => {
+  fs.stat(target, (err, stat) => {
     if (err) return send(res, 404, 'No encontrado');
     const ext = path.extname(target).toLowerCase();
     const types = {
@@ -496,9 +503,17 @@ function serveStatic(req, res, url) {
       '.js': 'text/javascript; charset=utf-8',
       '.png': 'image/png',
       '.jpg': 'image/jpeg',
-      '.svg': 'image/svg+xml'
+      '.svg': 'image/svg+xml',
+      '.json': 'application/json; charset=utf-8',
+      '.apk': 'application/vnd.android.package-archive'
     };
-    send(res, 200, data, { 'Content-Type': types[ext] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'Content-Type': types[ext] || 'application/octet-stream',
+      'Content-Length': stat.size,
+      'Cache-Control': 'no-store'
+    });
+    if (req.method === 'HEAD') return res.end();
+    fs.createReadStream(target).pipe(res);
   });
 }
 
