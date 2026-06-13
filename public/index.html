@@ -110,6 +110,8 @@
     .pill { display: inline-block; padding: 5px 9px; border-radius: 999px; background: #132f4e; color: #b9dcff; font-size: 12px; font-weight: 900; }
     .message { margin: 12px 0 0; color: var(--yellow); min-height: 20px; }
     .empty { padding: 24px; color: var(--muted); text-align: center; }
+    .userbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .adminOnly.hidden { display: none !important; }
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
       .top { align-items: flex-start; flex-direction: column; }
@@ -144,7 +146,10 @@
           <div class="sub">Activa dispositivos y carga lineas Xtream o M3U</div>
         </div>
       </div>
-      <button class="ghost" id="logoutBtn">Salir</button>
+      <div class="userbar">
+        <span id="sessionInfo" class="pill">Sesion</span>
+        <button class="ghost" id="logoutBtn">Salir</button>
+      </div>
     </section>
 
     <section class="layout">
@@ -172,7 +177,10 @@
           <div id="m3uFields" class="grid hidden">
             <label>URL M3U <input id="m3uUrl" placeholder="http://servidor/lista.m3u"></label>
           </div>
-          <label>Caduca <input id="caduca" type="date"></label>
+          <div class="grid two">
+            <label>Caduca <input id="caduca" type="date"></label>
+            <label>Meses a activar <input id="creditMonths" type="number" min="0" value="1"></label>
+          </div>
           <label class="switch">VPN WireGuard <input id="vpnEnabled" type="checkbox"></label>
           <label>Nombre tunel VPN <input id="vpnTunnel" placeholder="Ejemplo: cliente1"></label>
           <label>Archivo VPN .conf <input id="vpnFile" type="file" accept=".conf,text/plain"></label>
@@ -214,12 +222,47 @@
         </div>
       </div>
     </section>
+
+    <section id="usersCard" class="card adminOnly hidden" style="margin-top:16px">
+      <div class="head">
+        <h2>Subusuarios</h2>
+        <span class="pill">1 credito = 1 mes</span>
+      </div>
+      <div class="body grid">
+        <div class="grid two">
+          <label>Usuario <input id="newUser" autocomplete="off"></label>
+          <label>Contrasena <input id="newPass" autocomplete="off"></label>
+        </div>
+        <label>Creditos iniciales <input id="newCredits" type="number" min="0" value="0"></label>
+        <div class="actions">
+          <button id="createUserBtn">Crear subusuario</button>
+          <button id="reloadUsersBtn" class="secondary">Actualizar subusuarios</button>
+        </div>
+        <div id="usersMsg" class="message"></div>
+        <div class="table">
+          <table>
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Creditos</th>
+                <th>Cargar</th>
+              </tr>
+            </thead>
+            <tbody id="userRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script>
     const $ = (id) => document.getElementById(id);
     let token = localStorage.getItem('panelToken') || '';
     let devices = [];
+    let panelUsers = [];
+    let currentUser = '';
+    let isAdmin = false;
+    let credits = null;
     let tipo = 'xtream';
 
     async function api(url, options = {}) {
@@ -239,6 +282,16 @@
     function showApp(show) {
       $('loginView').classList.toggle('hidden', show);
       $('appView').classList.toggle('hidden', !show);
+    }
+
+    function updateSession(data = {}) {
+      currentUser = data.user !== undefined ? data.user : currentUser;
+      isAdmin = data.isAdmin !== undefined ? Boolean(data.isAdmin) : isAdmin;
+      credits = data.credits !== undefined ? data.credits : credits;
+      $('sessionInfo').textContent = isAdmin ? 'Admin' : `${currentUser} - ${credits || 0} creditos`;
+      $('usersCard').classList.toggle('hidden', !isAdmin);
+      $('creditMonths').disabled = isAdmin;
+      $('creditMonths').value = isAdmin ? '0' : ($('creditMonths').value || '1');
     }
 
     function setTipo(next) {
@@ -263,6 +316,7 @@
         password: $('password').value.trim(),
         m3u_url: $('m3uUrl').value.trim(),
         caduca: $('caduca').value,
+        credit_months: Number($('creditMonths').value || 0),
         vpn_enabled: $('vpnEnabled').checked,
         vpn_tunnel: $('vpnTunnel').value.trim(),
         vpn_config: $('vpnConfig').value.trim()
@@ -280,6 +334,7 @@
       $('password').value = row.password || '';
       $('m3uUrl').value = row.m3u_url || '';
       $('caduca').value = row.caduca || '';
+      $('creditMonths').value = '0';
       $('vpnEnabled').checked = row.vpn_enabled === true;
       $('vpnTunnel').value = row.vpn_tunnel || '';
       $('vpnConfig').value = row.vpn_config || '';
@@ -300,6 +355,7 @@
       $('password').value = '';
       $('m3uUrl').value = '';
       $('caduca').value = '';
+      $('creditMonths').value = isAdmin ? '0' : '1';
       $('vpnEnabled').checked = false;
       $('vpnTunnel').value = '';
       $('vpnConfig').value = '';
@@ -329,7 +385,7 @@
             <b>${escapeHtml(l.tipo || 'xtream')}</b> ${escapeHtml(label)}
             <button class="secondary" onclick='editLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Editar</button>
             <button class="secondary" onclick='duplicateLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Duplicar</button>
-            <button class="danger" onclick='deleteLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Borrar</button>
+            ${isAdmin ? `<button class="danger" onclick='deleteLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Borrar</button>` : ''}
           </div>`;
         }).join('') : '<div class="muted">Sin lineas</div>';
         return `<tr>
@@ -341,9 +397,9 @@
           <td>
             <div class="actions">
               <button class="secondary" onclick='addLine(${JSON.stringify(row.device_id)})'>Anadir linea</button>
-              <button class="secondary" onclick='renameDevice(${JSON.stringify(row.device_id)})'>Cambiar ID</button>
+              ${isAdmin ? `<button class="secondary" onclick='renameDevice(${JSON.stringify(row.device_id)})'>Cambiar ID</button>` : ''}
               <button class="secondary" onclick='toggleDevice(${JSON.stringify(row.device_id)})'>${row.activo ? 'Apagar' : 'Activar'}</button>
-              <button class="danger" onclick='deleteDevice(${JSON.stringify(row.device_id)})'>Borrar</button>
+              ${isAdmin ? `<button class="danger" onclick='deleteDevice(${JSON.stringify(row.device_id)})'>Borrar</button>` : ''}
             </div>
           </td>
         </tr>`;
@@ -358,8 +414,53 @@
       $('formMsg').textContent = 'Cargando...';
       const data = await api('/api/devices');
       devices = data.devices || [];
+      updateSession(data);
       $('formMsg').textContent = '';
       render();
+      if (isAdmin) loadUsers().catch(() => {});
+    }
+
+    function renderUsers() {
+      $('userRows').innerHTML = panelUsers.map((u) => `<tr>
+        <td><b>${escapeHtml(u.username)}</b></td>
+        <td>${Number(u.credits || 0)}</td>
+        <td>
+          <div class="actions">
+            <input id="credits-${escapeHtml(u.username)}" type="number" min="1" value="1" style="max-width:120px">
+            <button class="secondary" onclick='addCredits(${JSON.stringify(u.username)})'>Cargar</button>
+          </div>
+        </td>
+      </tr>`).join('');
+    }
+
+    async function loadUsers() {
+      if (!isAdmin) return;
+      const data = await api('/api/users');
+      panelUsers = data.users || [];
+      renderUsers();
+    }
+
+    async function createUser() {
+      $('usersMsg').textContent = 'Creando...';
+      try {
+        await api('/api/users', {
+          method: 'POST',
+          body: JSON.stringify({ username: $('newUser').value.trim(), password: $('newPass').value, credits: Number($('newCredits').value || 0) })
+        });
+        $('newUser').value = '';
+        $('newPass').value = '';
+        $('newCredits').value = '0';
+        $('usersMsg').textContent = 'Subusuario creado.';
+        await loadUsers();
+      } catch (err) {
+        $('usersMsg').textContent = err.message;
+      }
+    }
+
+    async function addCredits(username) {
+      const input = document.getElementById('credits-' + username);
+      await api('/api/users/credits', { method: 'POST', body: JSON.stringify({ username, addCredits: Number(input.value || 0) }) });
+      await loadUsers();
     }
 
     async function login() {
@@ -371,6 +472,7 @@
         });
         token = data.token;
         localStorage.setItem('panelToken', token);
+        updateSession(data);
         showApp(true);
         await load();
       } catch (err) {
@@ -411,6 +513,7 @@
       $('vpnTunnel').value = row.vpn_tunnel || '';
       $('vpnConfig').value = row.vpn_config || '';
       $('formTitle').textContent = 'Anadir linea';
+      $('creditMonths').value = '0';
       $('editingBadge').classList.remove('hidden');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -429,6 +532,7 @@
       if (!row || !line) return;
       fillForm({ ...row, ...line, line_id: '' });
       $('lineId').dataset.forceNew = '1';
+      $('creditMonths').value = '0';
       $('formTitle').textContent = 'Duplicar linea';
     }
 
@@ -472,6 +576,8 @@
     $('saveBtn').addEventListener('click', save);
     $('clearBtn').addEventListener('click', clearForm);
     $('reloadBtn').addEventListener('click', load);
+    $('createUserBtn').addEventListener('click', createUser);
+    $('reloadUsersBtn').addEventListener('click', loadUsers);
     $('search').addEventListener('input', render);
     $('vpnFile').addEventListener('change', async () => {
       const file = $('vpnFile').files && $('vpnFile').files[0];
