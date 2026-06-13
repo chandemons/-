@@ -341,6 +341,7 @@
           <td>
             <div class="actions">
               <button class="secondary" onclick='addLine(${JSON.stringify(row.device_id)})'>Anadir linea</button>
+              <button class="secondary" onclick='renameDevice(${JSON.stringify(row.device_id)})'>Cambiar ID</button>
               <button class="secondary" onclick='toggleDevice(${JSON.stringify(row.device_id)})'>${row.activo ? 'Apagar' : 'Activar'}</button>
               <button class="danger" onclick='deleteDevice(${JSON.stringify(row.device_id)})'>Borrar</button>
             </div>
@@ -443,6 +444,16 @@
       await api('/api/devices/' + encodeURIComponent(id), {
         method: 'PATCH',
         body: JSON.stringify({ device_only: true, activo: !row.activo, caduca: row.caduca })
+      });
+      await load();
+    }
+
+    async function renameDevice(id) {
+      const next = prompt('Nuevo ID del dispositivo', id);
+      if (!next || !next.trim() || next.trim() === id) return;
+      await api('/api/devices/' + encodeURIComponent(id) + '/rename', {
+        method: 'POST',
+        body: JSON.stringify({ new_device_id: next.trim() })
       });
       await load();
     }
