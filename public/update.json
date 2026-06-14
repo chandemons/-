@@ -1,6 +1,6 @@
 {
-    "apkUrl":  "https://github.com/chandemons/-/releases/download/untagged-7455db5d29a3ec8d2413/CHANDEMONSTV.apk",
-    "versionCode":  35,
-    "versionName":  "2.24",
-    "notes":  "se visualiza version pantalla principal y sal barra descarga actualizacion."
+    "apkUrl":  "https://github.com/chandemons/-/releases/download/untagged-b37f1a6d22ee53010fc2/CHANDEMONSTV-2.25-V36-VPN-SEGURO-ANTI-PARONES-FIRMA-ANTIGUA-debug.apk",
+    "versionCode":  36,
+    "versionName":  "2.25",
+    "notes":  "SE MEJORA VPN PARA EVITAR DESCONESIONES DE INTERNET."
 }
