@@ -1,6 +1,6 @@
 {
-    "apkUrl":  "https://github.com/chandemons/-/releases/download/V2.35-V46/CHANDEMONSTV.apk",
-    "versionCode":  46,
-    "versionName":  "2.35",
-    "notes":  "SE MEJORA VPN PARA EVITAR DESCONESIONES DE INTERNET CAMBIO CANAL SIN SLIR MENU PELICULA S SERIES ETC."
+    "apkUrl":  "https://github.com/chandemons/-/releases/download/V2.37-V48/CHANDEMONSTV.apk",
+    "versionCode":  48,
+    "versionName":  "2.37",
+    "notes":  "SE MEJORA EGP CON LISTA CANALES ABIERTA, COLOR LISTA CMBIO CANAL, PELICULAS SE VAN CARGANDO SEGUN BAJAS,ANIMACION AÑADIDA CON SONIDO AL INICIAR LA APP Y ALGUNOS ARREGLOS MAS."
 }
