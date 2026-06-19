@@ -591,9 +591,12 @@ async function handleApi(req, res, url) {
 
   const lineMatch = url.pathname.match(/^\/api\/devices\/([^/]+)\/lines\/([^/]+)$/);
   if (lineMatch && req.method === 'DELETE') {
-    if (!req.session.isAdmin) return sendJson(res, 403, { ok: false, message: 'Solo admin puede borrar lineas.' });
+    const deviceId = decodeURIComponent(lineMatch[1]);
     const lineId = decodeURIComponent(lineMatch[2]);
-    await supabase('/rest/v1/' + LINE_TABLE + '?id=eq.' + encodeURIComponent(lineId), {
+    const device = await findDevice(deviceId);
+    if (!device) return sendJson(res, 404, { ok: false, message: 'Dispositivo no encontrado.' });
+    if (!managedBy(req, device.owner_user)) return sendJson(res, 403, { ok: false, message: 'No puedes borrar lineas de otro subusuario.' });
+    await supabase('/rest/v1/' + LINE_TABLE + '?id=eq.' + encodeURIComponent(lineId) + '&dispositivo_id=eq.' + encodeURIComponent(device.id), {
       method: 'DELETE',
       headers: { Prefer: 'return=minimal' }
     });
