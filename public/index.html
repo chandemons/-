@@ -385,7 +385,7 @@
             <b>${escapeHtml(l.tipo || 'xtream')}</b> ${escapeHtml(label)}
             <button class="secondary" onclick='editLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Editar</button>
             <button class="secondary" onclick='duplicateLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Duplicar</button>
-            ${isAdmin ? `<button class="danger" onclick='deleteLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Borrar</button>` : ''}
+            <button class="danger" onclick='deleteLine(${JSON.stringify(row.device_id)}, ${JSON.stringify(l.id)})'>Borrar</button>
           </div>`;
         }).join('') : '<div class="muted">Sin lineas</div>';
         return `<tr>
