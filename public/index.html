@@ -367,6 +367,7 @@
 
     function stateOf(row) {
       if (!row.activo) return ['off', 'Apagado'];
+      if (!row.caduca) return ['warn', 'Sin caducidad'];
       if (row.caduca && new Date(row.caduca + 'T23:59:59') < new Date()) return ['warn', 'Caducado'];
       return ['on', 'Activo'];
     }
@@ -484,6 +485,10 @@
       const row = formData();
       if (!row.device_id) {
         $('formMsg').textContent = 'Pon el ID del dispositivo.';
+        return;
+      }
+      if (row.activo && !row.caduca) {
+        $('formMsg').textContent = 'Pon fecha de caducidad antes de activar.';
         return;
       }
       $('formMsg').textContent = 'Guardando...';
