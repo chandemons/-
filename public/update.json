@@ -1,6 +1,6 @@
 {
-    "apkUrl":  "https://github.com/chandemons/-/releases/download/V2.39-V2.50/CHANDEMONSTV-2.39-V50.apk",
-    "versionCode":  50,
-    "versionName":  "2.39",
-    "notes":  "SE MEJORA SEGURIDAD PARA PROTEGER DNS Y ANTICOPIA Y PREPARA PARA SUBIR A PLAYSTORE."
+    "apkUrl":  "https://github.com/chandemons/-/releases/download/V2.41-V52/CHANDEMONSTV-2.41-V52.apk",
+    "versionCode":  52,
+    "versionName":  "2.41",
+    "notes":  "SE MEJORA REPRODUCTOR DE VIDIO PAA MOVER ALANTE Y AYTRAS Y PANEL MEJORADO PARA AGREGAR ID SIN PROBLEMAS."
 }
