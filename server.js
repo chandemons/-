@@ -176,6 +176,14 @@ function addMonths(dateText, months) {
   return base.toISOString().slice(0, 10);
 }
 
+function isExpiredDate(dateText) {
+  const clean = String(dateText || '').trim();
+  if (!clean) return true;
+  const expiry = new Date(clean.slice(0, 10) + 'T23:59:59');
+  if (Number.isNaN(expiry.getTime())) return true;
+  return expiry < new Date();
+}
+
 function managedBy(req, owner) {
   return req.session && (req.session.isAdmin || String(owner || '') === req.session.user);
 }
@@ -339,9 +347,13 @@ async function saveDeviceAndLine(row, req) {
   }
   const months = Math.max(0, Number(row.credit_months || 0));
   if (months > 0) row.caduca = addMonths(existing && existing.caduca, months);
+  if (row.activo && !row.caduca) {
+    throw new Error('Pon una fecha de caducidad para activar este receptor.');
+  }
   if (!req.session.isAdmin && !existing && months <= 0) {
     throw new Error('Indica cuantos meses quieres activar. 1 credito = 1 mes.');
   }
+  if (row.activo && isExpiredDate(row.caduca)) row.activo = false;
   const nextCredits = await spendCredits(req, months);
   const devicePayload = {
     device_id: row.device_id,
@@ -464,6 +476,24 @@ async function syncLegacyApkConfig(row) {
   }
 }
 
+async function syncLegacyDeviceOnly(deviceId, activo, caduca) {
+  if (!TABLE) return;
+  try {
+    await supabase('/rest/v1/' + TABLE + '?device_id=eq.' + encodedDevice(deviceId), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        activo: Boolean(activo),
+        caduca: String(caduca || '').trim() || null
+      })
+    });
+  } catch (err) {
+    if (!/column .*caduca|column .*activo|could not find .*caduca|could not find .*activo|cannot update view/i.test(String(err.message || ''))) {
+      throw err;
+    }
+  }
+}
+
 async function handleApi(req, res, url) {
   if (url.pathname === '/api/login' && req.method === 'POST') {
     const body = await readJson(req);
@@ -551,11 +581,16 @@ async function handleApi(req, res, url) {
       const existing = await findDevice(id);
       if (!existing) return sendJson(res, 404, { ok: false, message: 'Dispositivo no encontrado.' });
       if (!managedBy(req, existing.owner_user)) return sendJson(res, 403, { ok: false, message: 'No puedes modificar un dispositivo de otro subusuario.' });
+      const nextActivo = Boolean(body.activo) && !isExpiredDate(body.caduca);
+      if (Boolean(body.activo) && !String(body.caduca || '').trim()) {
+        return sendJson(res, 400, { ok: false, message: 'Pon una fecha de caducidad antes de activar este receptor.' });
+      }
       await supabase('/rest/v1/' + DEVICE_TABLE + '?id=eq.' + encodeURIComponent(existing.id), {
         method: 'PATCH',
         headers: { Prefer: 'return=minimal' },
-        body: JSON.stringify({ activo: Boolean(body.activo), caduca: String(body.caduca || '').trim() || null })
+        body: JSON.stringify({ activo: nextActivo, caduca: String(body.caduca || '').trim() || null })
       });
+      await syncLegacyDeviceOnly(id, nextActivo, body.caduca);
       return sendJson(res, 200, { ok: true });
     }
     const row = cleanDevice({ ...body, device_id: id });
