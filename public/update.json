@@ -1,6 +1,6 @@
 {
-    "apkUrl":  "https://github.com/chandemons/-/releases/download/V2.41-V52/CHANDEMONSTV-2.41-V52.apk",
-    "versionCode":  52,
-    "versionName":  "2.41",
-    "notes":  "SE MEJORA REPRODUCTOR DE VIDIO PAA MOVER ALANTE Y AYTRAS Y PANEL MEJORADO PARA AGREGAR ID SIN PROBLEMAS."
+    "apkUrl": "https://osxacblrlhbclxrwxlfv.supabase.co/storage/v1/object/public/apk-updates/CHANDEMONSTV-2.43-V54-current.apk",
+    "versionCode": 54,
+    "versionName": "2.43",
+    "notes": "Quita los botones visibles de 30 segundos en peliculas y series, deja el avance y retroceso con izquierda/derecha del mando y coloca Zoom arriba con foco accesible desde TV Box."
 }
