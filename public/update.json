@@ -3,9 +3,4 @@
     "versionCode":  55,
     "versionName":  "2.44",
     "notes":  "Arregla el ID de Supabase para que quede fijo en la app y permite pegar el ID antiguo del panel si el TVBox cambio de ID al instalar o cambiar firma."
-}{
-    "apkUrl": "https://osxacblrlhbclxrwxlfv.supabase.co/storage/v1/object/public/apk-updates/CHANDEMONSTV-2.43-V54-current.apk",
-    "versionCode": 54,
-    "versionName": "2.43",
-    "notes": "Quita los botones visibles de 30 segundos en peliculas y series, deja el avance y retroceso con izquierda/derecha del mando y coloca Zoom arriba con foco accesible desde TV Box."
 }
