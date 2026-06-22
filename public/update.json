@@ -1,0 +1,6 @@
+{
+    "apkUrl":  "https://osxacblrlhbclxrwxlfv.supabase.co/storage/v1/object/public/apk-updates/CHANDEMONSTV-2.45-V56-current.apk",
+    "versionCode":  56,
+    "versionName":  "2.45",
+    "notes":  "Arregla peliculas y series: al pulsar sale la barra de progreso en vez del EPG, Zoom solo aparece cuando lo llamas y se cierra solo, y se actualiza el sonido de inicio a un estilo mas moderno."
+}
